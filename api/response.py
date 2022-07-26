@@ -31,12 +31,12 @@ username = ""
 
 
 app = FastAPI()
-json_file = open('/Users/akshay/Desktop/Django/myproject/api/ML/fer.json', 'r')
+json_file = open('/Users/akshay/Desktop/Django/Backend/api/ML/fer.json', 'r')
 loaded_model_json = json_file.read()
 json_file.close()
 model = model_from_json(loaded_model_json)
 # Load weights and them to model
-model.load_weights('/Users/akshay/Desktop/Django/myproject/api/ML/fer.h5')
+model.load_weights('/Users/akshay/Desktop/Django/Backend/api/ML/fer.h5')
 
 
 @api_view(['POST'])
@@ -57,8 +57,9 @@ def get_songs(request):
 
     topArtistUri = getArtists(sp)
     res = getTopTracks(sp,topArtistUri)
+    getAudioFeatures(sp,res[0])
     
-    return Response(res)
+    return Response(res[1])
 
 
 
@@ -92,14 +93,30 @@ def getTopTracks(sp,topArtistsUri):
         top_track_response = sp.artist_top_tracks(uri)
         top_tracks = top_track_response['tracks']
         top_tracks_list = top_tracks_list +  top_tracks
+        for t in top_tracks:
+            topTracksUri.append(t['uri'])
+        
 
     t = top_tracks_list[0]
     serializer = TrackSerializer(t)
     print(serializer.data)
         
 
-    return top_tracks_list
-   
+    return topTracksUri,top_tracks_list
+
+
+
+def getAudioFeatures(sp,top_tracks_list):
+    song_audio_features =[]
+    song_data =sp.audio_features(top_tracks_list)
+
+
+
+    # for tracks in top_tracks_list:
+    #     song_data =sp.audio_features(tracks['uri'])
+    #     song_audio_features.append(song_data)
+       
+    print(song_data)
 
 
 

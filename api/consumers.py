@@ -11,4 +11,4 @@ class VideoConsumer(WebsocketConsumer):
         }))
 
     def receive(self, text_data):
-        print(text_data)
+        print(self)
