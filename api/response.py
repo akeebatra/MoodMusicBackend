@@ -4,11 +4,16 @@ from django.http import JsonResponse
 from . import serializer
 from  . serializer import TrackSerializer
 from flask import jsonify, make_response
+from sklearn.preprocessing import StandardScaler
 
 import sys
 import spotipy
 import spotipy.util as util
 import json
+
+import math
+
+import pandas as pd
 
 
 from fastapi import FastAPI, WebSocket
@@ -17,11 +22,18 @@ from fastapi.responses import HTMLResponse
 import tensorflow as tf
 from keras.models import model_from_json
 from keras.preprocessing import image
+from keras.layers import Dense
+from keras.wrappers.scikit_learn import KerasClassifier
+from keras.utils import np_utils
+from keras.models import Sequential
+
 
 import io
 import base64
 import numpy as np
 from PIL import Image
+import pickle
+
 
 client_id = "acca5513fecb49e7bb8fcb5f886b04b7"
 client_secret = "782cd7c2bc674b68bbd57bdc19e28265"
@@ -31,6 +43,7 @@ username = ""
 
 
 app = FastAPI()
+
 json_file = open('/Users/akshay/Desktop/Django/Backend/api/ML/fer.json', 'r')
 loaded_model_json = json_file.read()
 json_file.close()
@@ -38,6 +51,12 @@ model = model_from_json(loaded_model_json)
 # Load weights and them to model
 model.load_weights('/Users/akshay/Desktop/Django/Backend/api/ML/fer.h5')
 
+
+spotify_features = ['energy', 'liveness', 'tempo', 'speechiness',
+                                        'acousticness', 'instrumentalness', 'danceability',
+                                        'loudness', 'valence']
+
+user_classified_songs = []
 
 @api_view(['POST'])
 def getAuth(request):
@@ -49,7 +68,6 @@ def getAuth(request):
     return JsonResponse({'accessToken':token,'refreshToken':'','expiresIn':''})
 
 
-
 @api_view(['POST'])
 def get_songs(request):
     token = request.data.get('accessToken')
@@ -57,9 +75,9 @@ def get_songs(request):
 
     topArtistUri = getArtists(sp)
     res = getTopTracks(sp,topArtistUri)
-    getAudioFeatures(sp,res[0])
+    df = getAudioFeatures(res[0],sp)
     
-    return Response(res[1])
+    return Response(classify_songs(df,res[1]))
 
 
 
@@ -99,75 +117,138 @@ def getTopTracks(sp,topArtistsUri):
 
     t = top_tracks_list[0]
     serializer = TrackSerializer(t)
-    print(serializer.data)
+    #print(serializer.data)
         
 
     return topTracksUri,top_tracks_list
 
-
-
-def getAudioFeatures(sp,top_tracks_list):
+def getAudioFeatures(list_uri_or_ids,sp):
+    
     song_audio_features =[]
-    song_data =sp.audio_features(top_tracks_list)
+    song_data =sp.audio_features(list_uri_or_ids)
 
+
+    features_required = ['id', 'energy', 'liveness', 'tempo', 'speechiness',
+                                     'acousticness', 'instrumentalness', 'danceability', 'duration_ms',
+                                     'loudness', 'valence','uri',]
+
+    
+    song_features_df = pd.DataFrame(song_data).drop(['analysis_url', 'key', 'mode', 'time_signature','track_href', 'type'], axis=1)
+   
+   
+
+   # song_features_df = song_features_df[features_required]
+    return song_features_df
 
 
     # for tracks in top_tracks_list:
     #     song_data =sp.audio_features(tracks['uri'])
     #     song_audio_features.append(song_data)
-       
-    print(song_data)
+ 
 
 
+def classify_songs(song_features_df,res):
+    pkl_filename = '/Users/akshay/Desktop/Django/Backend/api/ML/pickle_model_logreg.pkl'
+    with open(pkl_filename,'rb') as file:
+        pickle_model = pickle.load(file)
+    
+    scaler = StandardScaler()
+    scaled_song_features = scaler.fit_transform(song_features_df[spotify_features])
+    pred = pickle_model.predict(scaled_song_features)
+    song_features_df['mood'] = pred
+    print('len song_features_df', len(song_features_df))
+    dic = song_features_df.to_dict('records')
 
-@app.websocket("ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        # sbuf = StringIO()
-        # sbuf.write(data_image)
+    arr = []
+    for item in dic:
+        arr.append({'id': item['id'],'mood': item['mood']})
+        
+    for i in res:
+        for a in arr:
+            if a['id'] == i['id']:
+                i['mood'] = a['mood']
 
-        # decode and convert into image
-        data = await websocket.receive_text()
-        data = data.split("$$$$")
-        x, y, w, h = [int(x) for x in data[1].split(',')]
-        data = data[0]
 
-        b = io.BytesIO(base64.b64decode(data))
-        pimg = Image.open(b)
+    return res
+   
+    
+        
 
-        # # converting RGB to BGR, as opencv standards
-        frame = cv2.cvtColor(np.array(pimg), cv2.COLOR_RGBA2GRAY)
 
-        # Process the image frame
-        # frame = imutils.resize(frame, width=700)
-
-        # frame = cv2.flip(frame, -1)
-        roi_gray = frame[y:y + w, x:x + h]
-        roi_gray = cv2.resize(roi_gray, (48, 48))
-
-        img_pixels = tf.keras.utils.img_to_array(roi_gray)
-        img_pixels = np.expand_dims(img_pixels, axis=0)
-        img_pixels /= 255.0
-
-        predictions = model.predict(img_pixels)
-        max_index = int(np.argmax(predictions))
-
-        emotions = ['neutral', 'happiness', 'surprise',
-                    'sadness', 'anger', 'disgust', 'fear']
-        predicted_emotion = emotions[max_index]
-
-        print(predicted_emotion)
-
-        imgencode = cv2.imencode('.jpg', roi_gray)[1]
-
-        # base64 encode
-        stringData = base64.b64encode(imgencode).decode('utf-8')
-        b64_src = 'data:image/jpg;base64,'
-        stringData = b64_src + stringData
-
-        await websocket.send_text(f"{stringData}")
-
+    
     
 
 
+
+@api_view(['POST'])
+def suggest_next_song(request):
+    user_mood = 'Sad'
+    print(user_classified_songs)
+    return Response({'a':'b'})
+
+
+
+
+
+@api_view(['POST'])
+def get_playlists(request):
+    access_token = request.data.get('access_token')
+    sp = spotipy.Spotify(auth=access_token)
+    
+    playlists = {
+             'Relaxing':    ["https://open.spotify.com/playlist/1r4hnyOWexSvylLokn2hUa?si=a622dcb83906450f",
+                             "https://open.spotify.com/playlist/11IcIUefRdjIpy1K5GMdOH?si=83b430249c854434",],
+            'Aggressive':  ["https://open.spotify.com/playlist/0y1bZzglw6D3t5lPXRmuYS?si=57c0db5e01b9420b",
+                             "https://open.spotify.com/playlist/7rthAUYUFcbEeC8NS8Wh42?si=ab7f353f5f2847b3",],
+            'Happy' :      ["https://open.spotify.com/playlist/1h90L3LP8kAJ7KGjCV2Xfd?si=5e2691af69e544a3",
+                             "https://open.spotify.com/playlist/4AnAUkQNrLKlJCInZGSXRO?si=9846e647548d4026",]}
+
+    tracks = pd.DataFrame()
+    moods = []
+    
+    for mood, links in playlists.items():
+        for link in links:
+            id = link[34:56]
+            try:
+                 pl_tracks = sp.playlist_tracks(id)['items']
+                 ids = [foo['track']['id'] for foo in pl_tracks]
+                
+            except:
+                print (link)
+                continue
+            print('len',len(ids))
+           # features = get_track_features(ids, sp)
+            features = getAudioFeatures(ids,sp)
+            #features['id2'] = ids
+            features['mood'] = mood
+            tracks = tracks.append(features)
+            
+    
+    tracks.to_csv('dataset1.csv')
+    return ("")
+
+def get_track_features(track_ids, spotify):
+
+
+
+
+    features_required = [ 'energy', 'liveness', 'tempo', 'speechiness',
+                                     'acousticness', 'instrumentalness', 'danceability', 'duration_ms',
+                                     'loudness', 'valence','uri',]
+   
+    chunk_size = 50
+
+    num_chunks = int(math.ceil(len(track_ids) / float(chunk_size)))
+    features_add = []
+    for i in range(num_chunks):
+        chunk_track_ids = track_ids[i * chunk_size:min((i + 1) * chunk_size, len(track_ids))]
+        chunk_features = spotify.audio_features(tracks=chunk_track_ids)
+        features_add.extend(chunk_features)
+
+    features_df = pd.DataFrame(features_add).drop(['analysis_url', 'key', 'mode', 'time_signature',
+                                                   'track_href', 'type'], axis=1)
+
+   
+
+    features_df = features_df[features_required]
+    return features_df

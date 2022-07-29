@@ -11,4 +11,7 @@ class VideoConsumer(WebsocketConsumer):
         }))
 
     def receive(self, text_data):
-        print(self)
+        print(text_data)
+        arr = []
+        #nanaskdnas
+        
