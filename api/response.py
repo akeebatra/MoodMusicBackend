@@ -196,11 +196,11 @@ def get_playlists(request):
     sp = spotipy.Spotify(auth=access_token)
     
     playlists = {
-             'Relaxing':    ["https://open.spotify.com/playlist/1r4hnyOWexSvylLokn2hUa?si=a622dcb83906450f",
+             'calm':    ["https://open.spotify.com/playlist/1r4hnyOWexSvylLokn2hUa?si=a622dcb83906450f",
                              "https://open.spotify.com/playlist/11IcIUefRdjIpy1K5GMdOH?si=83b430249c854434",],
-            'Aggressive':  ["https://open.spotify.com/playlist/0y1bZzglw6D3t5lPXRmuYS?si=57c0db5e01b9420b",
+            'aggressive':  ["https://open.spotify.com/playlist/0y1bZzglw6D3t5lPXRmuYS?si=57c0db5e01b9420b",
                              "https://open.spotify.com/playlist/7rthAUYUFcbEeC8NS8Wh42?si=ab7f353f5f2847b3",],
-            'Happy' :      ["https://open.spotify.com/playlist/1h90L3LP8kAJ7KGjCV2Xfd?si=5e2691af69e544a3",
+            'happy' :      ["https://open.spotify.com/playlist/1h90L3LP8kAJ7KGjCV2Xfd?si=5e2691af69e544a3",
                              "https://open.spotify.com/playlist/4AnAUkQNrLKlJCInZGSXRO?si=9846e647548d4026",]}
 
     tracks = pd.DataFrame()
@@ -225,7 +225,7 @@ def get_playlists(request):
             
     
     tracks.to_csv('dataset1.csv')
-    return ("")
+    return Response({'success': True})
 
 def get_track_features(track_ids, spotify):
 
