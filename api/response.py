@@ -44,13 +44,6 @@ username = ""
 
 app = FastAPI()
 
-json_file = open('/Users/akshay/Desktop/Django/Backend/api/ML/fer.json', 'r')
-loaded_model_json = json_file.read()
-json_file.close()
-model = model_from_json(loaded_model_json)
-# Load weights and them to model
-model.load_weights('/Users/akshay/Desktop/Django/Backend/api/ML/fer.h5')
-
 
 spotify_features = ['energy', 'liveness', 'tempo', 'speechiness',
                                         'acousticness', 'instrumentalness', 'danceability',
@@ -170,23 +163,12 @@ def classify_songs(song_features_df,res):
 
 
     return res
-   
-    
-        
-
-
-    
-    
-
-
 
 @api_view(['POST'])
 def suggest_next_song(request):
     user_mood = 'Sad'
     print(user_classified_songs)
     return Response({'a':'b'})
-
-
 
 
 
